@@ -9,21 +9,20 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
-from langchain_pinecone import PineconeVectorStore
+from langchain_pinecone import PineconeVectorStore, PineconeEmbeddings
 from pinecone import Pinecone
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
 class RagEngine:
     def __init__(self):
-        self.index_name = "lexica"
+        self.index_name = "lexica-v2"
+        pinecone_api_key = os.environ.get("PINECONE_API_KEY")
         
-        # Initialize Embeddings using Free Hugging Face API (Serverless friendly)
-        hf_token = os.environ.get("HF_TOKEN")
-        self.embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=hf_token,
-            model_name="BAAI/bge-small-en-v1.5" # Returns 384 dimensions
+        # Initialize Embeddings using Pinecone Serverless Inference API
+        self.embeddings = PineconeEmbeddings(
+            model="multilingual-e5-large",
+            pinecone_api_key=pinecone_api_key
         )
         
         # Initialize Pinecone
@@ -36,7 +35,7 @@ class RagEngine:
             print(f"Creating Pinecone index '{self.index_name}'...")
             self.pc.create_index(
                 name=self.index_name,
-                dimension=384,
+                dimension=1024,
                 metric="cosine",
                 spec=ServerlessSpec(cloud="aws", region="us-east-1")
             )
