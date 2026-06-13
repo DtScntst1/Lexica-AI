@@ -15,7 +15,7 @@
 </div>
 
 <div align="center">
-  <img src="./assets/lexica_mockup.png" alt="Lexica-AI Application Interface" width="800"/>
+  <img src="./assets/lexica_screenshot.png" alt="Lexica-AI Application Interface" width="800"/>
 </div>
 
 ---
