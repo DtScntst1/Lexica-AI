@@ -35,12 +35,12 @@
 
 ```mermaid
 graph TD
-    A[User Uploads PDF] -->|Next.js (Vercel)| B(FastAPI Backend on Render)
+    A[User Uploads PDF] -->|Next.js Vercel| B[FastAPI Backend on Render]
     B --> C{LangChain Splitter}
     C -->|Semantic Chunks| D[Pinecone Inference Embeddings]
     D --> E[(Pinecone Serverless DB)]
     
-    F[User Asks Question] -->|Next.js Frontend| G(FastAPI Backend)
+    F[User Asks Question] -->|Next.js Frontend| G[FastAPI Backend]
     G --> H{Query Vectorization}
     H -->|Similarity Search| E
     E -->|Top-K Context Chunks| I[LLaMA-3 70B via Groq]
