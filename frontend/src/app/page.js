@@ -22,7 +22,8 @@ export default function Home() {
     formData.append('file', file);
 
     try {
-      const res = await fetch('http://localhost:8000/api/upload', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/upload`, {
         method: 'POST',
         body: formData
       });
@@ -55,7 +56,8 @@ export default function Home() {
     setIsTyping(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/ask', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiUrl}/api/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: userMsg })

@@ -3,39 +3,59 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Ensure TensorFlow does not conflict with HuggingFace on Windows
+# Prevent local tensorflow crashing transformers import
 os.environ['USE_TF'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 
-# Configuration
-CHROMA_PATH = "uploads/chroma_db"
-os.makedirs(CHROMA_PATH, exist_ok=True)
-
 class RagEngine:
     def __init__(self):
-        # We use a lightweight open-source embedding model for fast local processing
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        self.vector_store = Chroma(persist_directory=CHROMA_PATH, embedding_function=self.embeddings)
+        self.index_name = "lexica"
         
-        # Initialize Groq LLM if API key is present
-        self.llm = None
-        if "GROQ_API_KEY" in os.environ:
-            self.llm = ChatGroq(temperature=0, model_name="llama-3.3-70b-versatile")
+        # Initialize Embeddings using Free Hugging Face API (Serverless friendly)
+        hf_token = os.environ.get("HF_TOKEN")
+        self.embeddings = HuggingFaceInferenceAPIEmbeddings(
+            api_key=hf_token,
+            model_name="BAAI/bge-small-en-v1.5" # Returns 384 dimensions
+        )
+        
+        # Initialize Pinecone
+        pinecone_api_key = os.environ.get("PINECONE_API_KEY")
+        self.pc = Pinecone(api_key=pinecone_api_key)
+        
+        # Auto-create index if it doesn't exist
+        from pinecone import ServerlessSpec
+        if self.index_name not in self.pc.list_indexes().names():
+            print(f"Creating Pinecone index '{self.index_name}'...")
+            self.pc.create_index(
+                name=self.index_name,
+                dimension=384,
+                metric="cosine",
+                spec=ServerlessSpec(cloud="aws", region="us-east-1")
+            )
             
-    def index_document(self, file_path: str):
-        """Loads a PDF, splits it into chunks, and stores it in the Vector DB."""
-        print(f"Indexing {file_path}...")
+        # Initialize Vector Store
+        self.vector_store = PineconeVectorStore(
+            index_name=self.index_name,
+            embedding=self.embeddings
+        )
+        
+        # Initialize Groq LLM
+        self.llm = ChatGroq(temperature=0, model_name="llama-3.3-70b-versatile")
+            
+    def index_document(self, file_path: str, filename: str):
+        """Loads a PDF from a temporary path, splits it, and pushes vectors to Pinecone."""
+        print(f"Indexing {filename} to Pinecone...")
         loader = PyPDFLoader(file_path)
         pages = loader.load()
         
-        # Split text into chunks
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -44,27 +64,17 @@ class RagEngine:
         chunks = text_splitter.split_documents(pages)
         
         # Add metadata (filename)
-        filename = os.path.basename(file_path)
         for chunk in chunks:
             chunk.metadata["source_file"] = filename
             
-        # Add to ChromaDB
+        # Add to Pinecone Vector Database
         self.vector_store.add_documents(chunks)
-        self.vector_store.persist()
         return len(chunks)
 
     def ask_question(self, query: str):
-        """Retrieves relevant chunks and generates an answer."""
-        if not self.llm:
-            return {
-                "answer": "System Error: GROQ_API_KEY environment variable is not set. Please set it to enable the AI Agent.",
-                "sources": []
-            }
-
-        # Create the Retrieval Chain using LCEL directly
+        """Retrieves relevant chunks from Pinecone and generates an answer."""
         retriever = self.vector_store.as_retriever(search_kwargs={"k": 4})
         
-        # System prompt instructing the AI to use context
         system_prompt = (
             "You are Lexica-AI, an expert document analysis assistant.\n"
             "Use the following pieces of retrieved context to answer the question.\n"
@@ -77,14 +87,12 @@ class RagEngine:
             ("human", "{input}"),
         ])
         
-        # Manually execute to avoid deprecated langchain.chains dependencies
         docs = retriever.invoke(query)
         context_str = "\n\n".join(doc.page_content for doc in docs)
         
         prompt_value = prompt.invoke({"context": context_str, "input": query})
         response = self.llm.invoke(prompt_value)
         
-        # Extract unique sources for citations
         sources = []
         for doc in docs:
             source_info = {

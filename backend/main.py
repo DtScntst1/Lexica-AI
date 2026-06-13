@@ -26,21 +26,27 @@ class QueryRequest(BaseModel):
 def read_root():
     return {"message": "Lexica-AI API is running"}
 
+import tempfile
+
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
         
-    file_path = f"uploads/docs/{file.filename}"
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
     try:
-        # Index the document
-        chunks_indexed = rag_engine.index_document(file_path)
+        # Create a temporary file to store the upload (Serverless compatible)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_file_path = temp_file.name
+            
+        # Index the document using the temp file
+        chunks_indexed = rag_engine.index_document(temp_file_path, file.filename)
+        
+        # Instantly delete the file to save cloud memory
+        os.remove(temp_file_path)
+        
         return {
-            "message": "Document successfully indexed.",
+            "message": "Document successfully indexed to Cloud Vector Database.",
             "filename": file.filename,
             "chunks_processed": chunks_indexed
         }

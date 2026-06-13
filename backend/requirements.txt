@@ -5,5 +5,8 @@ pypdf2
 langchain
 langchain-groq
 langchain-community
-chromadb
-sentence-transformers
+langchain-pinecone
+pinecone-client
+langchain-huggingface
+langchain-text-splitters
+python-dotenv
